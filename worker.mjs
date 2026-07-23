@@ -1,17 +1,3 @@
-/**
- * Sub-Store Bot — Telegram 剪贴板 + 订阅转换
- * 
- * 依赖:
- *   - proxy-utils.esm.js (Sub-Store 引擎 — 由 sync-proxy-utils.yml 从 sub-store-org/Sub-Store 同步构建)
- *   - Cloudflare Workers KV — 短链存储
- *   - BOT_TOKEN — Telegram Bot Token
- * 
- * 引擎版本: 同步自 sub-store-org/Sub-Store，通过 tools/proxy-utils-src/ 构建
- * 
- * 部署格式: ES Module Worker
- * 需要 CF 兼容性标志: nodejs_compat测试测试
- */
-
 import { ProxyUtils } from './proxy-utils.esm.js';
 
 // ==================== 工具函数 ====================
