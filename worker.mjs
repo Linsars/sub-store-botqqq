@@ -9,7 +9,7 @@
  * 引擎版本: 同步自 sub-store-org/Sub-Store，通过 tools/proxy-utils-src/ 构建
  * 
  * 部署格式: ES Module Worker
- * 需要 CF 兼容性标志: nodejs_compat
+ * 需要 CF 兼容性标志: nodejs_compat测试测试
  */
 
 import { ProxyUtils } from './proxy-utils.esm.js';
