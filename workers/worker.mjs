@@ -54,6 +54,53 @@ function formatTtlLabel(s) {
   return s === 0 ? '\u6C38\u4E0D\u8FC7\u671F' : s < 3600 ? Math.round(s / 60) + '\u5206\u949F' : Math.round(s / 3600) + '\u5C0F\u65F6';
 }
 
+// ==================== 日志与错误处理 ====================
+
+function log(level, uid, msg, data = null) {
+  const entry = {
+    ts: new Date().toISOString(),
+    uid: String(uid || 'system'),
+    level: level.toUpperCase(),
+    msg,
+    ...(data && { data })
+  };
+  console.log(JSON.stringify(entry));
+}
+
+async function safeExecute(fn, env, uid, cid, mid = null, context = '') {
+  try {
+    return await fn();
+  } catch (err) {
+    log('ERROR', uid, `Execution failed in ${context}`, {
+      message: err.message,
+      context
+    });
+
+    let hint = '';
+    const lower = (err.message || '').toLowerCase();
+    if (lower.includes('fetch') || lower.includes('timeout') || lower.includes('network') || lower.includes('502') || lower.includes('503')) {
+      hint = '\n\n\u{1F4A1} \u8BA2\u9605\u94FE\u63A5\u53EF\u80FD\u65E0\u6CD5\u8BBF\u95EE\uFF0C\u5C1D\u8BD5\u66F4\u6362\u94FE\u63A5\u6216\u7A0D\u540E\u91CD\u8BD5';
+    } else if (lower.includes('parse') || lower.includes('format') || lower.includes('json')) {
+      hint = '\n\n\u{1F4A1} \u8BA2\u9605\u683C\u5F0F\u53EF\u80FD\u4E0D\u652F\u6301\uFF0C\u5C1D\u8BD5\u5176\u4ED6\u5BA2\u6237\u7AEF\u683C\u5F0F';
+    } else if (lower.includes('empty') || lower.includes('0 node') || lower.includes('\u6CA1\u6709\u89E3\u6790')) {
+      hint = '\n\n\u{1F4A1} \u8BA2\u9605\u4E2D\u6CA1\u6709\u68C0\u6D4B\u5230\u6709\u6548\u8282\u70B9';
+    } else if (lower.includes('kv') || lower.includes('d1')) {
+      hint = '\n\n\u{1F4A1} \u5B58\u50A8\u670D\u52A1\u5F02\u5E38\uFF0C\u8BF7\u68C0\u67E5 KV \u914D\u7F6E';
+    }
+
+    const userErrorMsg = '\u274C \u5904\u7406\u5931\u8D25' + (context ? ' [' + context + ']' : '') +
+      '\n\n\u539F\u56E0: ' + (err.message || '\u672A\u77E5\u9519\u8BEF') + hint;
+
+    if (mid) {
+      return editMsg(env, cid, mid, userErrorMsg);
+    } else {
+      return replyMsg(env, uid, cid, userErrorMsg);
+    }
+  }
+}
+
+
+
 // ==================== Surge 格式行解析 ====================
 
 function parseSurgeLines(text) {
@@ -192,6 +239,37 @@ function parseClashYaml(text) {
   return proxies;
 }
 
+// ==================== 国家旗帜 ====================
+
+function addFlag(name) {
+  name = String(name || '').trim() || '未命名';
+  if (/[\u{1F1E6}-\u{1F1FF}]{2}/u.test(name)) return name;
+  const rules = [
+    [/(\b|[^A-Za-z])(HK|Hong Kong|香港|深港|广港|沪港)(\b|[^A-Za-z])/i, '\u{1F1ED}\u{1F1F0}'],
+    [/(\b|[^A-Za-z])(TW|Taiwan|台湾|台灣|台北|新北|广台)(\b|[^A-Za-z])/i, '\u{1F1F9}\u{1F1FC}'],
+    [/(\b|[^A-Za-z])(JP|Japan|日本|东京|大阪|埼玉|广日)(\b|[^A-Za-z])/i, '\u{1F1EF}\u{1F1F5}'],
+    [/(\b|[^A-Za-z])(SG|Singapore|新加坡|狮城|广新)(\b|[^A-Za-z])/i, '\u{1F1F8}\u{1F1EC}'],
+    [/(\b|[^A-Za-z])(KR|Korea|韩国|首尔|春川|广韩)(\b|[^A-Za-z])/i, '\u{1F1F0}\u{1F1F7}'],
+    [/(\b|[^A-Za-z])(US|America|United States|美国|洛杉矶|圣何塞|纽约|西雅图|芝加哥|波特兰|达拉斯|广美)(\b|[^A-Za-z])/i, '\u{1F1FA}\u{1F1F8}'],
+    [/(\b|[^A-Za-z])(UK|Britain|英国|伦敦)(\b|[^A-Za-z])/i, '\u{1F1EC}\u{1F1E7}'],
+    [/(\b|[^A-Za-z])(FR|France|法国|巴黎)(\b|[^A-Za-z])/i, '\u{1F1EB}\u{1F1F7}'],
+    [/(\b|[^A-Za-z])(DE|Germany|德国|法兰克福)(\b|[^A-Za-z])/i, '\u{1F1E9}\u{1F1EA}'],
+    [/(\b|[^A-Za-z])(NL|Netherlands|荷兰|阿姆斯特丹)(\b|[^A-Za-z])/i, '\u{1F1F3}\u{1F1F1}'],
+    [/(\b|[^A-Za-z])(RU|Russia|俄罗斯|莫斯科)(\b|[^A-Za-z])/i, '\u{1F1F7}\u{1F1FA}'],
+    [/(\b|[^A-Za-z])(IN|India|印度|孟买)(\b|[^A-Za-z])/i, '\u{1F1EE}\u{1F1F3}'],
+    [/(\b|[^A-Za-z])(AU|Australia|澳大利亚|悉尼)(\b|[^A-Za-z])/i, '\u{1F1E6}\u{1F1FA}'],
+    [/(\b|[^A-Za-z])(CA|Canada|加拿大|蒙特利尔)(\b|[^A-Za-z])/i, '\u{1F1E8}\u{1F1E6}'],
+  ];
+  for (const [r, f] of rules) if (r.test(name)) return f + ' ' + name;
+  return name;
+}
+
+function isSs2022Cipher(cipher) {
+  const c = String(cipher || '').trim().toLowerCase();
+  return ['2022-blake3-aes-128-gcm', '2022-blake3-aes-256-gcm', '2022-blake3-chacha20-poly1305'].includes(c);
+}
+
+
 // ==================== 本地订阅收集系统 ====================
 
 function collectionText(collection) {
@@ -277,6 +355,7 @@ function mainKb() {
       ],
       [
         { text: '\u{1F4CB} 我的短链', callback_data: 'my_links_0' },
+        { text: '\u{1F4DD} YAML \u6A21\u677F', callback_data: 'tmpl_menu' },
       ],
     ],
   };
@@ -296,7 +375,7 @@ const FORMAT_OPTIONS = [
   { id: 'stash', label: 'Stash' },
   { id: 'egern', label: 'Egern' },
   { id: 'b64', label: 'Base64' },
-  { id: 'native', label: '原生 YAML' },
+  { id: 'native', label: '自定 YAML' },
 ];
 
 function fmtKb(allowed, convTtl, ttlDefault, u) {
@@ -1185,6 +1264,41 @@ async function onMsg(msg, env) {
     });
   }
 
+  // YAML 模板编辑模式
+  if (u.state === 'TMPL_EDIT') {
+    const input = (msg.text || '').trim();
+    u.state = null;
+    if (input === '/cancel' || !input) {
+      return replyMsg(env, uid, cid, '✖ 已取消');
+    }
+    let tmplText = input;
+    let tmplName = '自定义';
+    // 自动拉取 URL 内容
+    if (/^https?:\/\//i.test(input)) {
+      try {
+        const resp = await fetch(input);
+        if (resp.ok) {
+          tmplText = cleanTemplate(await resp.text());
+          // 从 URL 提取模板名
+          const urlParts = input.split('/');
+          tmplName = urlParts[urlParts.length - 1].replace(/\.[^.]+$/, '') || 'URL 导入';
+        }
+      } catch {}
+    }
+    // 尝试从 JSON 提取名称
+    try {
+      const parsed = JSON.parse(tmplText);
+      if (parsed.name) tmplName = parsed.name;
+      if (parsed.text) tmplText = parsed.text;
+    } catch {}
+    let templates = [];
+    try { templates = JSON.parse(await env.KV.get('tmpls:' + uid)) || []; } catch {}
+    templates.push({ name: tmplName, text: tmplText, active: false });
+    tmplText = cleanTemplate(tmplText);
+    await env.KV.put('tmpls:' + uid, JSON.stringify(templates));
+    return replyMsg(env, uid, cid, '✅ 模板已添加：' + tmplName + '\n去 YAML 模板管理切换', mainKb());
+  }
+
   // 备注模式 — 只改 preview（列表名字），不碰短链内容
   if (u.state && u.state.startsWith('RENAME_')) {
     const linkId = u.state.replace('RENAME_', '');
@@ -1264,31 +1378,33 @@ async function onMsg(msg, env) {
   }
 
   // ===== 非收集模式 =====
-  const ttl = u.ttl !== undefined ? u.ttl : 0;
+  return await safeExecute(async () => {
+    const ttl = u.ttl !== undefined ? u.ttl : 0;
 
-  // 所有文本 → 直接保存为文本短链，不解析
-  const preview = content.length > 50 ? content.slice(0, 50) + '...' : content;
-  const { id, url: clipUrl } = await saveToClipAndTrack(content, ttl, env, uid, {
-    preview: '\u{1F4C4} ' + preview, nodeCount: 0, source: 'text',
-    burn: u?._burn || false,
-    landing: u?._landing || false,
-  }, getEffectiveMaxAccess(u));
-  const previewShow = content.length > 150 ? content.slice(0, 150) + '...' : content;
-  const ttlT = formatTtlLabel(ttl);
-  const accT = getEffectiveMaxAccess(u) === 0 ? '' : '\n\u{1F4CA} ' + getEffectiveMaxAccess(u) + ' IP';
-  u._lastContent = content;
-  u._lastRawContent = content;
-  u._lastSubInput = content;
+    // 所有文本 → 直接保存为文本短链，不解析
+    const preview = content.length > 50 ? content.slice(0, 50) + '...' : content;
+    const { id, url: clipUrl } = await saveToClipAndTrack(content, ttl, env, uid, {
+      preview: '\u{1F4C4} ' + preview, nodeCount: 0, source: 'text',
+      burn: u?._burn || false,
+      landing: u?._landing || false,
+    }, getEffectiveMaxAccess(u));
+    const previewShow = content.length > 150 ? content.slice(0, 150) + '...' : content;
+    const ttlT = formatTtlLabel(ttl);
+    const accT = getEffectiveMaxAccess(u) === 0 ? '' : '\n\u{1F4CA} ' + getEffectiveMaxAccess(u) + ' IP';
+    u._lastContent = content;
+    u._lastRawContent = content;
+    u._lastSubInput = content;
 
-  const resultText =
-    '\u{1F4E6} <b>\u68C0\u6D4B\u5230\u6587\u672C\u8F93\u5165</b>\n\n' +
-    '\u{1F517} \u5DF2\u751F\u6210\u77ED\u94FE\uFF1A\n<code>' + clipUrl + '</code>\n\n' +
-    '\u{1F4CB} \u9884\u89C8\uFF1A\n<code>' + escapeHTML(previewShow) + '</code>\n\n' +
-    '\u23F1 ' + ttlT + accT + '\n\n' +
-    '\u{1F4A1} \u5982\u9700\u89E3\u6790\u8BA2\u9605\uFF0C\u8BF7\u4F7F\u7528\u4E3B\u9875\u7684\u300C\u8BA2\u9605\u300D\u6309\u94AE\u5BFC\u5165\u8BA2\u9605\u94FE\u63A5';
+    const resultText =
+      '\u{1F4E6} <b>\u68C0\u6D4B\u5230\u6587\u672C\u8F93\u5165</b>\n\n' +
+      '\u{1F517} \u5DF2\u751F\u6210\u77ED\u94FE\uFF1A\n<code>' + clipUrl + '</code>\n\n' +
+      '\u{1F4CB} \u9884\u89C8\uFF1A\n<code>' + escapeHTML(previewShow) + '</code>\n\n' +
+      '\u23F1 ' + ttlT + accT + '\n\n' +
+      '\u{1F4A1} \u5982\u9700\u89E3\u6790\u8BA2\u9605\uFF0C\u8BF7\u4F7F\u7528\u4E3B\u9875\u7684\u300C\u8BA2\u9605\u300D\u6309\u94AE\u5BFC\u5165\u8BA2\u9605\u94FE\u63A5';
 
-  // 编辑主页消息显示结果，编辑失败则发送新消息
-  return replyMsg(env, uid, cid, resultText);
+    // 编辑主页消息显示结果，编辑失败则发送新消息
+    return replyMsg(env, uid, cid, resultText);
+  }, env, uid, cid, null, '文本保存');
 
 }
 
@@ -1348,6 +1464,13 @@ async function onCb(q, env) {
   if (d.startsWith('conv_ttl_set:')) return cb_conv_ttl_set(env, uid, cid, mid, u, d, q);
   if (d === 'conv_acc_menu') return cb_conv_acc_menu(env, uid, cid, mid, u, d, q);
   if (d.startsWith('conv_acc_set:')) return cb_conv_acc_set(env, uid, cid, mid, u, d, q);
+  if (d.startsWith('tmpl_')) {
+    if (d === 'tmpl_menu') return cb_tmpl_menu(env, uid, cid, mid, u, d, q);
+    if (d === 'tmpl_edit') return cb_tmpl_edit(env, uid, cid, mid, u, d, q);
+    if (d.startsWith('tmpl_select_b:')) return cb_tmpl_select_b(env, uid, cid, mid, u, d, q);
+    if (d.startsWith('tmpl_select_u:')) return cb_tmpl_select_u(env, uid, cid, mid, u, d, q);
+    if (d.startsWith('tmpl_del:')) return cb_tmpl_del(env, uid, cid, mid, u, d, q);
+  }
   if (d.startsWith('conv_fmt:')) return cb_conv_fmt(env, uid, cid, mid, u, d, q);
 }
 
@@ -1355,6 +1478,7 @@ async function onCb(q, env) {
 // ==================== onCb 路由处理函数 ====================
 
 async function cb_menu(env, uid, cid, mid, u, d, q) {
+    return await safeExecute(async () => {
   // 返回主页 → 清理所有收集/临时状态
   u._collected = null;
   u._collectMode = null;
@@ -1366,7 +1490,8 @@ async function cb_menu(env, uid, cid, mid, u, d, q) {
       parse_mode: 'HTML',
       reply_markup: mainKb(),
     });
-}
+
+    }, env, uid, cid, mid, '格式转换');}
 
 async function cb_input_url(env, uid, cid, mid, u, d, q) {
   u._collectMode = 'url';
@@ -1391,6 +1516,7 @@ async function cb_input_file(env, uid, cid, mid, u, d, q) {
 }
 
 async function cb_collection_process(env, uid, cid, mid, u, d, q) {
+  return await safeExecute(async () => {
     const mode = u._collectMode;
     const items = u._collected || [];
     u._collectMode = null;
@@ -1457,7 +1583,7 @@ async function cb_collection_process(env, uid, cid, mid, u, d, q) {
       return editMsg(env, cid, mid, '\u274C 无法从收集的内容中解析出任何节点');
     }
     // 去重
-    const mergedStd = deduplicateProxies(proxies);
+    const mergedStd = deduplicateProxies(proxies).map(p => ({ ...p, name: addFlag(p.name) }));
     const dedupCount = proxies.length - mergedStd.length;
     u._lastProxies = mergedStd;
     u._fmtMsg = null;
@@ -1484,7 +1610,8 @@ async function cb_collection_process(env, uid, cid, mid, u, d, q) {
       chat_id: cid, message_id: mid, text, parse_mode: 'HTML',
       reply_markup: fmtKb(formats, u._convTtl, u.ttl, u),
     });
-}
+
+  }, env, uid, cid, mid, '订阅处理');}
 
 async function cb_ua_menu(env, uid, cid, mid, u, d, q) {
   return showUaSettings(cid, mid, uid, env);
@@ -2077,7 +2204,7 @@ async function cb_conv_fmt(env, uid, cid, mid, u, d, q) {
       }
       output = rawText;
     } else if (fmt === 'native') {
-      // 原生 Clash YAML（块格式），处理 Sub 引擎解析不了的畸形节点
+      // 自定 YAML：优先用用户模板（块格式），处理 Sub 引擎解析不了的畸形节点
       output = 'proxies:\n' + proxiesForConvert.map(p => {
         const order = ['name','type','server','port','password','uuid','cipher','network','tls','sni','skip-cert-verify','flow','udp','alpn','client-fingerprint','servername','grpc-opts','ws-opts','reality-opts'];
         const seen = new Set();
@@ -2127,6 +2254,35 @@ async function cb_conv_fmt(env, uid, cid, mid, u, d, q) {
         }
         return lines.join('\n');
       }).join('\n');
+      // 智能模板替换：找到 proxies: 段，替换其中的节点内容
+      let templates = [];
+      try { templates = JSON.parse(await env.KV.get('tmpls:' + uid)) || []; } catch {}
+      const activeTmpl = templates.find(t => t.active);
+      if (activeTmpl && activeTmpl.text) {
+        try {
+          let tmplText = activeTmpl.text;
+          if (tmplText === '__NOOM__') {
+            const resp = await fetch('https://raw.githubusercontent.com/Linsars/sub-store-bot/main/landing/noom.ini');
+            if (resp.ok) tmplText = await resp.text();
+          }
+          if (tmplText && tmplText.includes('proxies:')) {
+            const tmplLines = tmplText.split('\n');
+            let proxiesStart = -1;
+            let proxiesEnd = tmplLines.length;
+            for (let i = 0; i < tmplLines.length; i++) {
+              if (/^proxies:\s*$/.test(tmplLines[i])) { proxiesStart = i; continue; }
+              if (proxiesStart >= 0 && /^\w/.test(tmplLines[i]) && !/^\s/.test(tmplLines[i])) {
+                proxiesEnd = i;
+                break;
+              }
+            }
+            if (proxiesStart >= 0) {
+              tmplLines.splice(proxiesStart + 1, proxiesEnd - proxiesStart - 1, ...output.split('\n'));
+              output = tmplLines.join('\n');
+            }
+          }
+        } catch {}
+      }
     } else {
       // Sub 引擎产出（Surge 特殊处理 WG）
       const surgeWg = proxiesForConvert.filter(p => p.type === 'wireguard');
@@ -2226,6 +2382,20 @@ async function cb_conv_fmt(env, uid, cid, mid, u, d, q) {
         extraUrls.push({ text: '⚡ WireGuard (原生 YAML)', url: wgUrl });
       }
 
+      // SS2022 侧链
+      const ss2022Nodes = proxiesForConvert.filter(p => p.type === 'ss' && isSs2022Cipher(p.cipher));
+      if (ss2022Nodes.length > 0 && fmt !== 'clashmeta' && fmt !== 'native' && fmt !== 'b64') {
+        let ss2022Yaml;
+        try { ss2022Yaml = ProxyUtils.produce(ss2022Nodes, 'clashmeta'); } catch {}
+        if (!ss2022Yaml) ss2022Yaml = 'proxies:\n' + ss2022Nodes.map(p => '  - {name: "' + p.name + '", type: ss, server: ' + p.server + ', cipher: ' + p.cipher + '}').join('\n');
+        const { url: ss2022Url } = await saveToClipAndTrack(String(ss2022Yaml), getEffectiveTtl(u), env, uid, {
+          preview: 'SS2022 × ' + ss2022Nodes.length + ' (自定 YAML)', nodeCount: ss2022Nodes.length, source: 'ss2022',
+          burn: u?._burn || false,
+          landing: u?._landing || false,
+        }, getEffectiveMaxAccess(u));
+        extraUrls.push({ text: '⚡ SS2022 (自定 YAML)', url: ss2022Url });
+      }
+
       // Gost 侧链
       if (u._gostInput) {
         const { url: gostUrl } = await saveToClipAndTrack(u._gostInput, getEffectiveTtl(u), env, uid, {
@@ -2263,6 +2433,136 @@ async function cb_conv_fmt(env, uid, cid, mid, u, d, q) {
     return;
 }
 
+
+
+
+// ==================== YAML 模板管理 ====================
+
+
+
+async function cb_tmpl_menu(env, uid, cid, mid, u, d, q) {
+  let templates = [];
+  try { templates = JSON.parse(await env.KV.get('tmpls:' + uid)) || []; } catch {}
+  // 加入内置模板
+  const builtins = [
+    { name: '内置 Clash YAML', text: '__BUILTIN__', builtin: true },
+    { name: 'NooM 规则集', text: '__NOOM__', builtin: true },
+  ];
+  const all = [...builtins, ...templates];
+  const activeIdx = templates.findIndex(t => t.active);
+  const lines = ['\u{1F4DD} <b>YAML 模板管理</b>', ''];
+  const rows = [];
+  // 内置模板
+  for (let i = 0; i < builtins.length; i++) {
+    const t = builtins[i];
+    const isActive = activeIdx === -1 && i === 0; // 无自定义时默认第一个
+    const icon = isActive ? '\u25CF' : '\u25CB';
+    lines.push(icon + ' ' + t.name);
+    rows.push([{ text: (isActive ? '\u2705 ' : '') + t.name, callback_data: 'tmpl_select_b:' + i }]);
+  }
+  // 用户模板
+  for (let i = 0; i < templates.length; i++) {
+    const t = templates[i];
+    const isActive = activeIdx === i;
+    const icon = isActive ? '\u25CF' : '\u25CB';
+    lines.push(icon + ' ' + t.name);
+    rows.push([
+      { text: (isActive ? '\u2705 ' : '') + t.name, callback_data: 'tmpl_select_u:' + i },
+      { text: '\u2716', callback_data: 'tmpl_del:' + i },
+    ]);
+  }
+  lines.push('', '\u70B9击切换模板，\u2716 删除用户模板');
+  const kb = { inline_keyboard: [...rows, [{ text: '+ 添加模板', callback_data: 'tmpl_edit' }], [{ text: '\u2190 返回', callback_data: 'menu' }]] };
+  return tg('editMessageText', env.BOT_TOKEN, { chat_id: cid, message_id: mid, text: lines.join('\n'), parse_mode: 'HTML', reply_markup: kb });
+}
+
+async function cb_tmpl_edit(env, uid, cid, mid, u, d, q) {
+  u.state = 'TMPL_EDIT';
+  u.promptCid = cid;
+  u.promptMid = mid;
+  return tg('editMessageText', env.BOT_TOKEN, {
+    chat_id: cid, message_id: mid,
+    text: '\u270F\uFE0F \u53D1\u9001\u4F60\u7684 Clash YAML \u6A21\u677F\uFF08\u5B8C\u6574 YAML \u6216\u53EA\u8981 proxy-groups/rules \u90E8\u5206\uFF09\n\n\u793A\u4F8B\uFF1A\nproxy-groups:\n  - name: \u81EA\u52A8\u9009\u62E9\n    type: url-test\n    proxies:\n      - \u8282\u70B91\nrules:\n  - MATCH,DIRECT',
+    parse_mode: 'HTML',
+    reply_markup: { inline_keyboard: [[{ text: '\u2716 \u53D6\u6D88', callback_data: 'tmpl_menu' }]] },
+  });
+}
+
+async function cb_tmpl_select_b(env, uid, cid, mid, u, d, q) {
+  const idx = parseInt(d.split(':')[1]);
+  // 内置模板：清除用户模板的 active 标志
+  let templates = [];
+  try { templates = JSON.parse(await env.KV.get('tmpls:' + uid)) || []; } catch {}
+  templates.forEach(t => t.active = false);
+  await env.KV.put('tmpls:' + uid, JSON.stringify(templates));
+  return cb_tmpl_menu(env, uid, cid, mid, u, d, q);
+}
+
+async function cb_tmpl_select_u(env, uid, cid, mid, u, d, q) {
+  const idx = parseInt(d.split(':')[1]);
+  let templates = [];
+  try { templates = JSON.parse(await env.KV.get('tmpls:' + uid)) || []; } catch {}
+  templates.forEach((t, i) => t.active = (i === idx));
+  await env.KV.put('tmpls:' + uid, JSON.stringify(templates));
+  return cb_tmpl_menu(env, uid, cid, mid, u, d, q);
+}
+
+async function cb_tmpl_del(env, uid, cid, mid, u, d, q) {
+  const idx = parseInt(d.split(':')[1]);
+  let templates = [];
+  try { templates = JSON.parse(await env.KV.get('tmpls:' + uid)) || []; } catch {}
+  templates.splice(idx, 1);
+  await env.KV.put('tmpls:' + uid, JSON.stringify(templates));
+  return cb_tmpl_menu(env, uid, cid, mid, u, d, q);
+}
+
+
+
+function cleanTemplate(tmplText) {
+  if (!tmplText || !tmplText.includes('proxies:')) return tmplText;
+  const lines = tmplText.split('\n');
+  const result = [];
+  let proxiesStart = -1;
+  let firstProxyIndent = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^proxies:\s*$/.test(line)) {
+      proxiesStart = i;
+      result.push(line);
+      continue;
+    }
+    if (proxiesStart >= 0 && firstProxyIndent < 0) {
+      if (/^\s+- name:/.test(line)) {
+        firstProxyIndent = line.search(/[^ ]/);
+        result.push('  # 节点参数模板：');
+        result.push('  - name: 示例节点');
+        for (let j = proxiesStart + 1; j < lines.length; j++) {
+          const l = lines[j];
+          if (!l || /^\s*$/.test(l)) continue;
+          const indent = l.search(/[^ ]/);
+          if (indent <= firstProxyIndent && (/^\s+- name:/.test(l) || /^\w/.test(l.trimStart()))) break;
+          if (indent === firstProxyIndent + 2) {
+            result.push('    ' + l.trimStart().split(':')[0] + ':');
+          }
+        }
+        break;
+      }
+      if (/^\w/.test(line.trimStart()) && !/^\s/.test(line)) break;
+    }
+    result.push(line);
+  }
+  let proxiesEnd = lines.length;
+  if (firstProxyIndent >= 0) {
+    for (let i = proxiesStart + 1; i < lines.length; i++) {
+      const l = lines[i];
+      if (!l || /^\s*$/.test(l)) continue;
+      if (/^\s+- name:/.test(l)) { proxiesEnd = i; break; }
+      if (/^\w/.test(l.trimStart()) && l.search(/[^ ]/) <= firstProxyIndent) { proxiesEnd = i; break; }
+    }
+    for (let i = proxiesEnd; i < lines.length; i++) result.push(lines[i]);
+  }
+  return result.join('\n');
+}
 
 
   // ==================== Worker 入口 ====================
